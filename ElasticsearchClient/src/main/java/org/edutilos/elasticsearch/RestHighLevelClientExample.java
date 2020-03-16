@@ -1,6 +1,7 @@
 package org.edutilos.elasticsearch;
 
 import org.apache.http.HttpHost;
+import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.delete.DeleteResponse;
 import org.elasticsearch.action.get.GetRequest;
@@ -24,6 +25,7 @@ import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.aggregations.AggregationBuilders;
 import org.elasticsearch.search.aggregations.Aggregations;
+import org.elasticsearch.search.aggregations.bucket.range.Range;
 import org.elasticsearch.search.aggregations.bucket.terms.Terms;
 import org.elasticsearch.search.aggregations.bucket.terms.TermsAggregationBuilder;
 import org.elasticsearch.search.aggregations.metrics.Avg;
@@ -201,6 +203,8 @@ public class RestHighLevelClientExample {
 
         Aggregations aggregations = response.getAggregations();
         Terms terms = aggregations.get("group_by_state");
+        // following will throw exception , because we have requested TermsAggregation
+//        Range range = aggregations.get("group_by_state");
         System.out.println("<<All Buckets>>");
         terms.getBuckets().forEach(one-> {
             String bucketKey = one.getKey().toString();
@@ -258,6 +262,51 @@ public class RestHighLevelClientExample {
                 }
             }
         }
+
+
+        // aggregation with async
+        request = new SearchRequest("bank");
+        searchSourceBuilder = new SearchSourceBuilder();
+        aggregation = AggregationBuilders.terms("group_by_state")
+                .field("state.keyword");
+        aggregation.subAggregation(AggregationBuilders.avg("average_balance")
+                .field("balance"));
+        searchSourceBuilder.aggregation(aggregation);
+        request.source(searchSourceBuilder);
+
+
+        final ActionListener<SearchResponse> searchResponseActionListener =
+                new ActionListener<SearchResponse>() {
+                    @Override
+                    public void onResponse(SearchResponse response) {
+                        System.out.println("<<searchAPI [with aggregation]>>");
+                        response.getHits().forEach(one-> {
+                            System.out.println(one.toString());
+                        });
+
+                        Aggregations aggregations = response.getAggregations();
+                        Terms terms = aggregations.get("group_by_state");
+                        System.out.println("<<All Buckets>>");
+                        terms.getBuckets().forEach(one-> {
+                            String bucketKey = one.getKey().toString();
+                            long docCount = one.getDocCount();
+                            Avg averageBalance = one.getAggregations().get("average_balance");
+                            double averageBalanceValue = averageBalance.getValue();
+                            System.out.printf("key = %s, docCount = %s, averageBalance = %s\n", bucketKey, docCount,
+                                    averageBalanceValue);
+                        });
+                    }
+
+                    @Override
+                    public void onFailure(Exception e) {
+                        e.printStackTrace();
+                    }
+                };
+
+        // Throws Error: java.nio.channels.ClosedChannelException
+//        client.searchAsync(request, RequestOptions.DEFAULT, searchResponseActionListener);
+
+
     }
 
 
